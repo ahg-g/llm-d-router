@@ -33,12 +33,17 @@ import (
 type Config struct {
 	// The name of the data producer that produces PrefixCacheMatchInfo.
 	PrefixMatchInfoProducerName string `json:"prefixMatchInfoProducerName,omitempty"`
+
+	// ReferenceContextBlocks defines the baseline context length (in blocks) considered fully impactful.
+	// Prompts shorter than this will have their match scores proportionally scaled down.
+	ReferenceContextBlocks int `json:"referenceContextBlocks,omitempty"`
 }
 
 // Plugin implements the prefix cache aware scoring logic.
 type Plugin struct {
-	typedName          plugin.TypedName
-	prefixMatchDataKey plugin.DataKey
+	typedName              plugin.TypedName
+	prefixMatchDataKey     plugin.DataKey
+	referenceContextBlocks int
 }
 
 // compile-time type assertions
@@ -60,7 +65,7 @@ func PrefixCachePluginFactory(name string, decoder *json.Decoder, handle plugin.
 		}
 	}
 
-	p, err := New(handle.Context(), name, cfg.PrefixMatchInfoProducerName)
+	p, err := New(handle.Context(), name, cfg.PrefixMatchInfoProducerName, cfg.ReferenceContextBlocks)
 	if err != nil {
 		return nil, err
 	}
@@ -68,13 +73,14 @@ func PrefixCachePluginFactory(name string, decoder *json.Decoder, handle plugin.
 }
 
 // New initializes a new prefix Plugin.
-func New(_ context.Context, name string, producerName string) (*Plugin, error) {
+func New(_ context.Context, name string, producerName string, referenceContextBlocks int) (*Plugin, error) {
 	return &Plugin{
 		typedName: plugin.TypedName{
 			Type: PrefixCacheScorerPluginType,
 			Name: name,
 		},
-		prefixMatchDataKey: attrprefix.PrefixCacheMatchInfoDataKey.WithNonEmptyProducerName(producerName),
+		prefixMatchDataKey:     attrprefix.PrefixCacheMatchInfoDataKey.WithNonEmptyProducerName(producerName),
+		referenceContextBlocks: referenceContextBlocks,
 	}, nil
 }
 
@@ -116,7 +122,11 @@ func (p *Plugin) Score(ctx context.Context, _ *fwksched.InferenceRequest, endpoi
 
 		if prefixMatchInfo, ok := info.(*attrprefix.PrefixCacheMatchInfo); ok {
 			if prefixMatchInfo.TotalBlocks() != 0 {
-				scores[endpoint] = float64(prefixMatchInfo.MatchBlocks()) / float64(prefixMatchInfo.TotalBlocks())
+				if p.referenceContextBlocks > 0 && prefixMatchInfo.TotalBlocks() < p.referenceContextBlocks {
+					scores[endpoint] = float64(prefixMatchInfo.MatchBlocks()) / float64(p.referenceContextBlocks)
+				} else {
+					scores[endpoint] = float64(prefixMatchInfo.MatchBlocks()) / float64(prefixMatchInfo.TotalBlocks())
+				}
 			}
 		} else {
 			logger.V(logutil.DEFAULT).Error(nil, "PrefixCacheMatchInfo has unexpected type, assigning score 0", "endpoint", endpoint)

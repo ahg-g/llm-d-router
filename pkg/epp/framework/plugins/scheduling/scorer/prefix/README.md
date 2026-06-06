@@ -6,7 +6,15 @@ Scores candidate endpoints using `PrefixCacheMatchInfo` prepared earlier in the 
 
 ## What it does
 
-For each candidate endpoint, the scorer reads the `PrefixCacheMatchInfo` attribute and computes:
+For each candidate endpoint, the scorer reads the `PrefixCacheMatchInfo` attribute and computes a match score.
+
+If `referenceContextBlocks` is configured (`> 0`) and the prompt length (`totalBlocks`) is shorter than this baseline threshold, the match ratio is proportionally scaled down by context length:
+
+```text
+score = matchBlocks / referenceContextBlocks
+```
+
+Otherwise, for prompts meeting or exceeding the reference context length, the standard match ratio is used:
 
 ```text
 score = matchBlocks / totalBlocks
@@ -14,7 +22,7 @@ score = matchBlocks / totalBlocks
 
 This produces a normalized score in the range `[0, 1]`:
 
-- higher score: more of the request prefix is expected to be reusable from cache
+- higher score: more absolute context (or a larger portion of a massive prompt) is expected to be reusable from cache
 - lower score: less prefix cache reuse is expected
 
 If the attribute is missing, has the wrong type, or `totalBlocks` is zero, the endpoint receives score `0`.
@@ -29,7 +37,10 @@ The attribute is typically produced by the approximate prefix cache data produce
 
 ## Configuration
 
-This plugin does not define any plugin-specific parameters.
+| Parameter | Type | Default | Description |
+| :--- | :--- | :--- | :--- |
+| `prefixMatchInfoProducerName` | string | `""` | Name of the producer generating `PrefixCacheMatchInfo`. |
+| `referenceContextBlocks` | integer | `0` | Baseline context length (in blocks) considered highly impactful. Prompts shorter than this have their scores scaled down. |
 
 ## Operational notes
 

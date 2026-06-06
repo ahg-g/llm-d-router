@@ -30,7 +30,7 @@ import (
 
 func TestPrefixPluginScore(t *testing.T) {
 	producerName := "approx-prefix-cache-producer"
-	p, _ := New(context.Background(), PrefixCacheScorerPluginType, producerName)
+	p, _ := New(context.Background(), PrefixCacheScorerPluginType, producerName, 0)
 
 	key := attrprefix.PrefixCacheMatchInfoDataKey.WithNonEmptyProducerName(producerName).String()
 
@@ -44,5 +44,24 @@ func TestPrefixPluginScore(t *testing.T) {
 	scores := p.Score(context.Background(), nil, endpoints)
 
 	assert.Equal(t, 0.5, scores[endpoint1])
+	assert.Equal(t, 0.2, scores[endpoint2])
+}
+
+func TestPrefixPluginScoreWithReferenceContextBlocks(t *testing.T) {
+	producerName := "approx-prefix-cache-producer"
+	p, _ := New(context.Background(), PrefixCacheScorerPluginType, producerName, 100)
+
+	key := attrprefix.PrefixCacheMatchInfoDataKey.WithNonEmptyProducerName(producerName).String()
+
+	endpoint1 := fwksched.NewEndpoint(&fwkdl.EndpointMetadata{NamespacedName: k8stypes.NamespacedName{Name: "pod1"}}, fwkdl.NewMetrics(), nil)
+	endpoint1.Put(key, attrprefix.NewPrefixCacheMatchInfo(5, 10, 1))
+
+	endpoint2 := fwksched.NewEndpoint(&fwkdl.EndpointMetadata{NamespacedName: k8stypes.NamespacedName{Name: "pod2"}}, fwkdl.NewMetrics(), nil)
+	endpoint2.Put(key, attrprefix.NewPrefixCacheMatchInfo(20, 100, 1))
+
+	endpoints := []fwksched.Endpoint{endpoint1, endpoint2}
+	scores := p.Score(context.Background(), nil, endpoints)
+
+	assert.Equal(t, 0.05, scores[endpoint1])
 	assert.Equal(t, 0.2, scores[endpoint2])
 }
