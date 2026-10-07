@@ -85,7 +85,7 @@ func (m *mockPredictor) PredictBulkStrict(ctx context.Context, requests []latenc
 		return nil, m.err
 	}
 	if m.nilBulkResponse {
-		return nil, nil
+		return nil, nil //nolint:nilnil // exercises nil-response handling in bulkPredictWithMetrics
 	}
 	if m.bulkPredictionsOverride != nil {
 		return &latencypredictor.BulkPredictionResponse{Predictions: m.bulkPredictionsOverride}, nil
