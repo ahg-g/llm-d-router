@@ -43,8 +43,10 @@ import (
 
 // mockPredictor implements PredictorInterface for testing
 type mockPredictor struct {
-	predictions map[string]*latencypredictor.PredictionResponse
-	err         error
+	predictions             map[string]*latencypredictor.PredictionResponse
+	err                     error
+	nilBulkResponse         bool
+	bulkPredictionsOverride []latencypredictor.PredictionResponse
 	// capturedBulkStrictRequests records the requests passed to the most recent
 	// PredictBulkStrict call, so tests can assert what was sent to the predictor.
 	capturedBulkStrictRequests []latencypredictor.PredictionRequest
@@ -81,6 +83,12 @@ func (m *mockPredictor) PredictBulkStrict(ctx context.Context, requests []latenc
 	m.capturedBulkStrictRequests = requests
 	if m.err != nil {
 		return nil, m.err
+	}
+	if m.nilBulkResponse {
+		return nil, nil
+	}
+	if m.bulkPredictionsOverride != nil {
+		return &latencypredictor.BulkPredictionResponse{Predictions: m.bulkPredictionsOverride}, nil
 	}
 	responses := make([]latencypredictor.PredictionResponse, 0, len(requests))
 	for _, request := range requests {

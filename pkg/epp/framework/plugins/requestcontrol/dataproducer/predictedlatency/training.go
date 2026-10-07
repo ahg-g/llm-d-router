@@ -194,6 +194,10 @@ func bulkPredictWithMetrics(
 		return []*latencypredictor.PredictionResponse{}, nil
 	}
 
+	if predictor == nil {
+		return nil, errPredictorUnavailable
+	}
+
 	for i, metricsState := range metricsStates {
 		if metricsState == nil {
 			return nil, fmt.Errorf("metrics state at index %d cannot be nil", i)
@@ -239,7 +243,8 @@ func bulkPredictWithMetrics(
 	duration := time.Since(start)
 
 	if err != nil {
-		logger.V(logutil.DEBUG).Error(err, "bulk prediction failed",
+		logger.V(logutil.DEBUG).Info("bulk prediction failed",
+			"error", err,
 			"duration_ms", duration.Milliseconds(),
 			"request_count", len(bulkRequests))
 		return nil, err
@@ -248,7 +253,7 @@ func bulkPredictWithMetrics(
 	if bulkResponse == nil {
 		logger.V(logutil.DEBUG).Info("bulk prediction returned nil",
 			"duration_ms", duration.Milliseconds())
-		return nil, errors.New("bulk prediction returned nil result")
+		return nil, errNilPredictionResponse
 	}
 
 	if predictedLatencyContext != nil {

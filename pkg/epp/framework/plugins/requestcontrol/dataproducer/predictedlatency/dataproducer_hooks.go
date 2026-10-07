@@ -19,6 +19,7 @@ package predictedlatency
 
 import (
 	"context"
+	"fmt"
 	"math"
 
 	"sigs.k8s.io/controller-runtime/pkg/log"
@@ -106,6 +107,16 @@ func (pl *PredictedLatency) Produce(ctx context.Context, request *fwksched.Infer
 					"ttftHeadroom", pred.TTFTHeadroom,
 					"tpotHeadroom", pred.Headroom)
 			}
+		}
+	} else {
+		if err == nil {
+			err = fmt.Errorf("%w: got %d, want %d", errPredictionLengthMismatch, len(predictions), len(endpoints))
+		}
+		if reason := classifyPredictionError(err); reason != "" {
+			llmdRequestPredictionFailures.WithLabelValues(pl.typedName.Name, pl.typedName.Type, reason).Inc()
+			pl.failureLog.Do(func() {
+				logger.Error(err, "Latency prediction failed", "reason", reason, "endpoints", len(endpoints))
+			})
 		}
 	}
 

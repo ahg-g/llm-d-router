@@ -19,15 +19,20 @@ package predictedlatency
 
 import (
 	"context"
+	"errors"
 	"testing"
 
+	"github.com/go-logr/logr/funcr"
+	promtestutil "github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	fwksched "github.com/llm-d/llm-d-router/pkg/epp/framework/interface/scheduling"
 	attrlatency "github.com/llm-d/llm-d-router/pkg/epp/framework/plugins/datalayer/attribute/latency"
 	attrmm "github.com/llm-d/llm-d-router/pkg/epp/framework/plugins/datalayer/attribute/multimodal"
 	attrprefix "github.com/llm-d/llm-d-router/pkg/epp/framework/plugins/datalayer/attribute/prefix"
+	latencypredictor "github.com/llm-d/llm-d-router/pkg/epp/framework/plugins/requestcontrol/dataproducer/predictedlatency/latencypredictorclient"
 )
 
 func TestProducesConsumes(t *testing.T) {
@@ -161,4 +166,61 @@ func TestProduce_LiveContextPublishes(t *testing.T) {
 
 	_, getErr := pl.getPredictedLatencyContextForRequest(request)
 	assert.NoError(t, getErr, "SLO context should be stored on the happy path")
+}
+
+func TestProduce_PredictionFailureObservability(t *testing.T) {
+	tests := []struct {
+		name       string
+		predictor  latencypredictor.PredictorInterface
+		wantReason string
+	}{
+		{
+			name:       "predictor unavailable",
+			predictor:  nil,
+			wantReason: predictionFailureReasonPredictorUnavailable,
+		},
+		{
+			name:       "request error",
+			predictor:  &mockPredictor{err: errors.New("connection refused")},
+			wantReason: predictionFailureReasonRequestError,
+		},
+		{
+			name:       "nil response",
+			predictor:  &mockPredictor{nilBulkResponse: true},
+			wantReason: predictionFailureReasonNilResponse,
+		},
+		{
+			name: "length mismatch",
+			predictor: &mockPredictor{
+				bulkPredictionsOverride: []latencypredictor.PredictionResponse{},
+			},
+			wantReason: predictionFailureReasonLengthMismatch,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			pluginName := "test-" + tc.wantReason
+			pl := NewPredictedLatency(pluginName, DefaultConfig, tc.predictor)
+
+			var errorLogs []string
+			logger := funcr.New(func(prefix, args string) {
+				errorLogs = append(errorLogs, prefix+args)
+			}, funcr.Options{Verbosity: 0})
+			ctx := log.IntoContext(context.Background(), logger)
+
+			before := promtestutil.ToFloat64(llmdRequestPredictionFailures.WithLabelValues(pluginName, LatencyDataProviderPluginType, tc.wantReason))
+
+			endpoint := createTestEndpoint("pod-a", 0.1, 0, 0)
+			req1 := createTestInferenceRequest("req-1", 0, 0)
+			req2 := createTestInferenceRequest("req-2", 0, 0)
+
+			require.NoError(t, pl.Produce(ctx, req1, []fwksched.Endpoint{endpoint}))
+			require.NoError(t, pl.Produce(ctx, req2, []fwksched.Endpoint{endpoint}))
+
+			after := promtestutil.ToFloat64(llmdRequestPredictionFailures.WithLabelValues(pluginName, LatencyDataProviderPluginType, tc.wantReason))
+			assert.InDelta(t, 2.0, after-before, 1e-9, "every failed prediction must increment request_prediction_failures_total")
+			assert.Len(t, errorLogs, 1, "error log must fire on first failure and rate-limit rapid follow-up failures")
+		})
+	}
 }
