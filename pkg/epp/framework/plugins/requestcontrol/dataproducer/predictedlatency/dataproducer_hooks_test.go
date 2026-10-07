@@ -169,6 +169,9 @@ func TestProduce_LiveContextPublishes(t *testing.T) {
 }
 
 func TestProduce_PredictionFailureObservability(t *testing.T) {
+	resetMetrics()
+	t.Cleanup(resetMetrics)
+
 	tests := []struct {
 		name       string
 		predictor  latencypredictor.PredictorInterface
@@ -223,4 +226,22 @@ func TestProduce_PredictionFailureObservability(t *testing.T) {
 			assert.Len(t, errorLogs, 1, "error log must fire on first failure and rate-limit rapid follow-up failures")
 		})
 	}
+
+	t.Run("context canceled ignored", func(t *testing.T) {
+		resetMetrics()
+		pl := NewPredictedLatency("test-canceled", DefaultConfig, &mockPredictor{err: context.Canceled})
+
+		var errorLogs []string
+		logger := funcr.New(func(prefix, args string) {
+			errorLogs = append(errorLogs, prefix+args)
+		}, funcr.Options{Verbosity: 0})
+		ctx := log.IntoContext(context.Background(), logger)
+
+		endpoint := createTestEndpoint("pod-a", 0.1, 0, 0)
+		req := createTestInferenceRequest("req-canceled", 0, 0)
+
+		require.NoError(t, pl.Produce(ctx, req, []fwksched.Endpoint{endpoint}))
+		assert.Equal(t, 0, promtestutil.CollectAndCount(llmdRequestPredictionFailures), "context cancellation must not increment request_prediction_failures_total")
+		assert.Empty(t, errorLogs, "context cancellation must not emit error log")
+	})
 }
