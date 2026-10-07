@@ -62,8 +62,7 @@ const (
 
 // InferencePool API group to version mapping
 var inferencePoolGroupToVersion = map[string]string{
-	routing.InferencePoolAPIGroup:   "v1",
-	"inference.networking.x-k8s.io": "v1alpha2", // TODO: deprecated should be clean up
+	routing.InferencePoolAPIGroup: "v1",
 }
 
 // AllowlistValidator manages allowed prefill targets based on InferencePool resources
@@ -283,12 +282,7 @@ func (av *AllowlistValidator) poolSelector(poolObj *unstructured.Unstructured) (
 		return nil, fmt.Errorf("missing or invalid spec field (found=%t): %w", found, err)
 	}
 
-	// GA API (inference.networking.k8s.io) uses spec.selector.matchLabels;
-	// deprecated alpha API (inference.networking.x-k8s.io) uses a flat spec.selector map.
 	selectorPath := []string{"selector", "matchLabels"}
-	if av.gvr.Group != routing.InferencePoolAPIGroup {
-		selectorPath = []string{"selector"}
-	}
 
 	selectorData, found, err := unstructured.NestedStringMap(spec, selectorPath...)
 	if err != nil || !found {

@@ -59,6 +59,11 @@ var _ = Describe("AllowlistValidator", func() {
 		})
 	})
 
+	It("should reject the inference.networking.x-k8s.io pool group", func() {
+		_, err := NewAllowlistValidator(true, "inference.networking.x-k8s.io", "test-namespace", "test-pool")
+		Expect(err).To(MatchError(ContainSubstring("unsupported poolGroup")))
+	})
+
 	Context("poolSelector", func() {
 		It("should extract selector from GA InferencePool (matchLabels)", func() {
 			av := &AllowlistValidator{
@@ -79,36 +84,6 @@ var _ = Describe("AllowlistValidator", func() {
 								"app.kubernetes.io/name": "my-model",
 								"component":              "serving",
 							},
-						},
-					},
-				},
-			}
-
-			selector, err := av.poolSelector(pool)
-			Expect(err).ToNot(HaveOccurred())
-			Expect(selector.String()).To(SatisfyAll(
-				ContainSubstring("app.kubernetes.io/name=my-model"),
-				ContainSubstring("component=serving"),
-			))
-		})
-
-		It("should extract selector from deprecated alpha InferencePool (flat map)", func() {
-			av := &AllowlistValidator{
-				gvr: schema.GroupVersionResource{
-					Group:    "inference.networking.x-k8s.io",
-					Version:  "v1alpha2",
-					Resource: "inferencepools",
-				},
-			}
-			pool := &unstructured.Unstructured{
-				Object: map[string]interface{}{
-					"apiVersion": "inference.networking.x-k8s.io/v1alpha2",
-					"kind":       "InferencePool",
-					"metadata":   map[string]interface{}{"name": "test-pool"},
-					"spec": map[string]interface{}{
-						"selector": map[string]interface{}{
-							"app.kubernetes.io/name": "my-model",
-							"component":              "serving",
 						},
 					},
 				},
@@ -172,14 +147,14 @@ var _ = Describe("AllowlistValidator", func() {
 		It("should fail when selector is missing", func() {
 			av := &AllowlistValidator{
 				gvr: schema.GroupVersionResource{
-					Group:    "inference.networking.x-k8s.io",
-					Version:  "v1alpha2",
+					Group:    routing.InferencePoolAPIGroup,
+					Version:  "v1",
 					Resource: "inferencepools",
 				},
 			}
 			pool := &unstructured.Unstructured{
 				Object: map[string]interface{}{
-					"apiVersion": "inference.networking.x-k8s.io/v1alpha2",
+					"apiVersion": "inference.networking.k8s.io/v1",
 					"kind":       "InferencePool",
 					"metadata":   map[string]interface{}{"name": "test-pool"},
 					"spec":       map[string]interface{}{},
