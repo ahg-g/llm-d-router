@@ -59,11 +59,6 @@ var _ = Describe("AllowlistValidator", func() {
 		})
 	})
 
-	It("should reject the inference.networking.x-k8s.io pool group", func() {
-		_, err := NewAllowlistValidator(true, "inference.networking.x-k8s.io", "test-namespace", "test-pool")
-		Expect(err).To(MatchError(ContainSubstring("unsupported poolGroup")))
-	})
-
 	Context("poolSelector", func() {
 		It("should extract selector from GA InferencePool (matchLabels)", func() {
 			av := &AllowlistValidator{
@@ -180,6 +175,11 @@ var _ = Describe("AllowlistValidator", func() {
 					"valid-pod.test-namespace.svc.cluster.local",
 				),
 			}
+		})
+
+		It("should reject the inference.networking.x-k8s.io pool group", func() {
+			_, err := NewAllowlistValidator(true, "inference.networking.x-k8s.io", "test-namespace", "test-pool")
+			Expect(err).To(MatchError(ContainSubstring("pool-group must be")))
 		})
 
 		It("should allow targets in the allowlist", func() {

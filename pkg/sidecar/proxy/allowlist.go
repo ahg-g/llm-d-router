@@ -60,11 +60,6 @@ const (
 	resyncPeriod          = 30 * time.Second
 )
 
-// InferencePool API group to version mapping
-var inferencePoolGroupToVersion = map[string]string{
-	routing.InferencePoolAPIGroup: "v1",
-}
-
 // AllowlistValidator manages allowed prefill targets based on InferencePool resources
 type AllowlistValidator struct {
 	logger        logr.Logger
@@ -95,16 +90,13 @@ func NewAllowlistValidator(enabled bool, poolGroup, namespace, poolName string) 
 		}, nil
 	}
 
-	// Determine version based on poolGroup
-	version, exists := inferencePoolGroupToVersion[poolGroup]
-	if !exists {
-		return nil, fmt.Errorf("unsupported poolGroup: %s, "+
-			"must be one of %v", poolGroup, getSupportedPoolGroups())
+	if poolGroup != routing.InferencePoolAPIGroup {
+		return nil, fmt.Errorf("pool-group must be %q, got %q", routing.InferencePoolAPIGroup, poolGroup)
 	}
 
 	gvr := schema.GroupVersionResource{
-		Group:    poolGroup,
-		Version:  version,
+		Group:    routing.InferencePoolAPIGroup,
+		Version:  "v1",
 		Resource: inferencePoolResource,
 	}
 
@@ -134,14 +126,6 @@ func NewAllowlistValidator(enabled bool, poolGroup, namespace, poolName string) 
 		podStopChans:   make(map[string]chan struct{}),
 		stopCh:         make(chan struct{}),
 	}, nil
-}
-
-func getSupportedPoolGroups() []string {
-	groups := make([]string, 0, len(inferencePoolGroupToVersion))
-	for group := range inferencePoolGroupToVersion {
-		groups = append(groups, group)
-	}
-	return groups
 }
 
 // Start begins watching InferencePool resources and managing the allowlist
@@ -282,11 +266,9 @@ func (av *AllowlistValidator) poolSelector(poolObj *unstructured.Unstructured) (
 		return nil, fmt.Errorf("missing or invalid spec field (found=%t): %w", found, err)
 	}
 
-	selectorPath := []string{"selector", "matchLabels"}
-
-	selectorData, found, err := unstructured.NestedStringMap(spec, selectorPath...)
+	selectorData, found, err := unstructured.NestedStringMap(spec, "selector", "matchLabels")
 	if err != nil || !found {
-		return nil, fmt.Errorf("missing or invalid selector field at %v (found=%t): %w", selectorPath, found, err)
+		return nil, fmt.Errorf("missing or invalid spec.selector.matchLabels field (found=%t): %w", found, err)
 	}
 
 	return labels.Set(selectorData).AsSelector(), nil
