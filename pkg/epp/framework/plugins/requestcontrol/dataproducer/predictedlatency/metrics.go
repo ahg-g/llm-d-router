@@ -28,6 +28,7 @@ import (
 
 	logutil "github.com/llm-d/llm-d-router/pkg/common/observability/logging"
 	metricsutil "github.com/llm-d/llm-d-router/pkg/common/observability/metrics"
+	latencypredictor "github.com/llm-d/llm-d-router/pkg/epp/framework/plugins/requestcontrol/dataproducer/predictedlatency/latencypredictorclient"
 	eppmetrics "github.com/llm-d/llm-d-router/pkg/epp/metrics"
 )
 
@@ -51,9 +52,8 @@ const (
 )
 
 var (
-	errPredictorUnavailable     = errors.New("latency predictor unavailable")
-	errNilPredictionResponse    = errors.New("bulk prediction returned nil result")
-	errPredictionLengthMismatch = errors.New("bulk prediction count does not match candidate endpoint count")
+	errPredictorUnavailable  = errors.New("latency predictor unavailable")
+	errNilPredictionResponse = errors.New("bulk prediction returned nil result")
 )
 
 var (
@@ -175,7 +175,7 @@ func classifyPredictionError(err error) string {
 		return predictionFailureReasonPredictorUnavailable
 	case errors.Is(err, errNilPredictionResponse):
 		return predictionFailureReasonNilResponse
-	case errors.Is(err, errPredictionLengthMismatch):
+	case errors.Is(err, latencypredictor.ErrResponseLengthMismatch):
 		return predictionFailureReasonLengthMismatch
 	default:
 		return predictionFailureReasonRequestError

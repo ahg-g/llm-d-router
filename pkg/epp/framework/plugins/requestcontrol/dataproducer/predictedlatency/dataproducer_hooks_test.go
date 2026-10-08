@@ -19,8 +19,12 @@ package predictedlatency
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"net/http"
+	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/go-logr/logr/funcr"
 	promtestutil "github.com/prometheus/client_golang/prometheus/testutil"
@@ -243,5 +247,40 @@ func TestProduce_PredictionFailureObservability(t *testing.T) {
 		require.NoError(t, pl.Produce(ctx, req, []fwksched.Endpoint{endpoint}))
 		assert.Equal(t, 0, promtestutil.CollectAndCount(llmdRequestPredictionFailures), "context cancellation must not increment request_prediction_failures_total")
 		assert.Empty(t, errorLogs, "context cancellation must not emit error log")
+	})
+
+	t.Run("coalesced HTTP length mismatch", func(t *testing.T) {
+		resetMetrics()
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(latencypredictor.BulkPredictionResponse{
+				Predictions: []latencypredictor.PredictionResponse{},
+			})
+		}))
+		t.Cleanup(server.Close)
+
+		cfg := latencypredictor.DefaultConfig()
+		cfg.PredictionURLs = []string{server.URL}
+		cfg.TrainingURL = server.URL
+		cfg.CoalesceWindow = time.Millisecond
+
+		var errorLogs []string
+		logger := funcr.New(func(prefix, args string) {
+			errorLogs = append(errorLogs, prefix+args)
+		}, funcr.Options{Verbosity: 0})
+		ctx := log.IntoContext(context.Background(), logger)
+
+		predictor := latencypredictor.New(cfg, logger)
+		t.Cleanup(func() { predictor.Stop(context.Background()) })
+
+		pluginName := "test-coalesced-length-mismatch"
+		pl := NewPredictedLatency(pluginName, DefaultConfig, predictor)
+		endpoint := createTestEndpoint("pod-a", 0.1, 0, 0)
+		req := createTestInferenceRequest("req-coalesced", 0, 0)
+
+		require.NoError(t, pl.Produce(ctx, req, []fwksched.Endpoint{endpoint}))
+		after := promtestutil.ToFloat64(llmdRequestPredictionFailures.WithLabelValues(pluginName, LatencyDataProviderPluginType, predictionFailureReasonLengthMismatch))
+		assert.InDelta(t, 1.0, after, 1e-9, "coalesced length mismatch must increment length_mismatch counter")
+		assert.Len(t, errorLogs, 1)
 	})
 }

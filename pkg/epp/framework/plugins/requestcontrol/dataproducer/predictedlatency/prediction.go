@@ -93,7 +93,7 @@ func (pl *PredictedLatency) generatePredictions(ctx context.Context, predictedLa
 		return nil, err
 	}
 	if len(bulkPredictions) != len(candidateEndpoints) {
-		return nil, fmt.Errorf("%w: got %d, want %d", errPredictionLengthMismatch, len(bulkPredictions), len(candidateEndpoints))
+		return nil, fmt.Errorf("%w: got %d, want %d", latencypredictor.ErrResponseLengthMismatch, len(bulkPredictions), len(candidateEndpoints))
 	}
 
 	// Process results
