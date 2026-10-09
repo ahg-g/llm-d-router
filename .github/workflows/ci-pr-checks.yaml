@@ -102,6 +102,8 @@ jobs:
 
       # Missing cache is not an error; compare-coverage.sh reports all
       # components as new and exits 0.
+      # Keyed on the builder's Go version: cmd/cover statement counts differ
+      # across Go releases.
       - name: Restore main branch coverage baseline
         if: github.event_name == 'pull_request' || github.event_name == 'merge_group'
         uses: actions/cache/restore@v6
